@@ -1,0 +1,9 @@
+.form {
+  @apply w-9/12 h-full flex flex-col justify-center items-stretch gap-8;
+}
+
+.input {
+  @apply h-9;
+}
+
+
