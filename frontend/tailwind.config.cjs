@@ -17,6 +17,7 @@ module.exports = {
       blue: "#1fb6ff",
       purple: "#7e5bef",
       "light-purple": "#800080",
+      gold: "#FFD700",
       white: "#ffffff",
       pink: "#ff49db",
       orange: "#ff7849",
@@ -40,7 +41,7 @@ module.exports = {
         "4xl": "2rem",
       },
       boxShadow: {
-        "default": "3px 3px 0 black",
+        default: "3px 3px 0 black",
       },
     },
   },
