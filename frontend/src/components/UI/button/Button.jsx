@@ -2,7 +2,7 @@ import React from 'react'
 import style from './Button.module.css'
 
 const Button = (props) => {
-  const className = props.connectWallet
+  const className = props.connectWalletButton
     ? style.button
     : props.submitButton
     ? style.formButton
