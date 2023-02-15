@@ -16,7 +16,7 @@ const DescriptionContainer = () => {
         </p>
       </div>
       <div>
-        <Button>Connect Wallet</Button>
+        <Button connectWalletButton>Connect Wallet</Button>
       </div>
     </Container>
   )
