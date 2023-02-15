@@ -1,12 +1,15 @@
 import React from 'react'
 import Header from '../components/header/Header'
-import Container from '../components/Container/Container'
+import DescriptionContainer from '../components/DescriptionContainer/DescriptionContainer'
+import StakeContainer from '../components/StakeContainer/StakeContainer'
 
 const MainPage = () => {
+  const isConnect = true
   return (
     <>
       <Header />
-      <Container />
+      {!isConnect && <DescriptionContainer />}
+      {isConnect && <StakeContainer />}
     </>
   )
 }
