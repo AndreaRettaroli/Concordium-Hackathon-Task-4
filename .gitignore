@@ -1,0 +1,11 @@
+# ignore Mac OS noise
+.DS_Store
+
+# Ignore IDEA project settings
+.idea/
+
+# ignore the build directory for Rust/Anchor
+/backend/concordium-lsp/target
+
+# Ignore backup files creates by cargo fmt.
+**/*.rs.bk

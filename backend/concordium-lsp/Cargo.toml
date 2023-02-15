@@ -1,0 +1,10 @@
+[package]
+name = "concordium-lsp"
+version = "0.1.0"
+description = "Liquid Staking Platform for Concordium blockchain"
+edition = "2021"
+
+[dependencies]
+concordium-rust-sdk = { path = "./deps/concordium-rust-sdk" }
+spl-token = { version = "3.1", features = ["no-entrypoint"] }
+bincode = "1.3.3"
