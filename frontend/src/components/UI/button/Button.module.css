@@ -1,0 +1,52 @@
+.button {
+  border: 2px solid;
+  border-color: rgb(118, 11, 168);
+  box-shadow: 3px 3px 0 black;
+  color: inherit;
+  font-size: 15px;
+  text-transform: uppercase;
+  padding: 10px;
+  font-family: "Commodore", monospace;
+  color: white;
+  text-align: center;
+  font-size: 1.5rem;
+  line-height: 20px;
+  letter-spacing: 5px;
+  text-shadow: -1px 0 0 #fdff2a, -2px 0 0 #df4a42, 1px 0 0 #91fcfe,
+    2px 0 0 #4405fc;
+
+  animation: blink 1s steps(4, start) infinite;
+}
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}
+.button::before {
+  display: inline-block;
+  content: "";
+  margin-right: 0.75rem;
+  width: 1rem;
+  height: 1rem;
+  background: #ea3941;
+  border: 3px solid #fbd5d7;
+  border-radius: 50%;
+}
+
+.formButton {
+  @apply border-2 border-light-purple border-solid;
+  box-shadow: 3px 3px 0 black;
+  color: inherit;
+  font-size: 15px;
+  text-transform: uppercase;
+  padding: 10px;
+  font-family: "Commodore", monospace;
+  color: white;
+  text-align: center;
+  font-size: 1.5rem;
+  line-height: 20px;
+  letter-spacing: 5px;
+  text-shadow: -1px 0 0 #fdff2a, -2px 0 0 #df4a42, 1px 0 0 #91fcfe,
+    2px 0 0 #4405fc;
+
+}

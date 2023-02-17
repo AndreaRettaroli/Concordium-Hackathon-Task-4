@@ -1,0 +1,10 @@
+.header {
+  @apply w-full px-4 h-24 bg-purple;
+  @apply flex content-center justify-between items-center;
+  border-bottom: 3px solid purple;
+  @apply shadow-default;
+}
+
+.title {
+  @apply font-commodore text-5xl font-extrabold text-white;
+}
