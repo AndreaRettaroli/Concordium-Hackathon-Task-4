@@ -1,14 +1,16 @@
 import React from 'react'
-import Button from '../UI/button/Button'
+import Wallet from '../../hooks/useWallet'
 import style from './Header.module.css'
 
-const Header = () => {
+const Header = ({ client, connectedAccount, setConnectedAccount }) => {
   return (
     <div className={style.header} id="header">
       <h1 className={style.title}>Liquid Finance</h1>
-      <Button onClick={() => console.log('prova')} connectWalletButton>
-        Connect Wallet
-      </Button>
+      <Wallet
+        client={client}
+        connectedAccount={connectedAccount}
+        setConnectedAccount={setConnectedAccount}
+      />
     </div>
   )
 }
