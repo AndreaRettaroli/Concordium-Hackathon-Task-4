@@ -1,5 +1,5 @@
 .mainContainer {
-  @apply sm:container md:w-5/12 lg:h-4/6 h-max my-20 mx-auto p-7 container w-10/12 ;
+  @apply sm:container md:w-5/12 lg:h-4/6 h-max my-10 mx-auto p-7 container w-10/12 ;
   @apply bg-purple;
   @apply border-2 border-light-purple border-solid;
   @apply shadow-default;
