@@ -15,9 +15,6 @@ const DescriptionContainer = () => {
           Get lqCCD, staked CCD supported all across the Concordium ecosystem.
         </p>
       </div>
-      <div>
-        <Button connectWalletButton>Connect Wallet</Button>
-      </div>
     </Container>
   )
 }
