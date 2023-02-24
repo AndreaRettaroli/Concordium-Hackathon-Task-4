@@ -5,6 +5,7 @@ import StakeContainer from '../components/StakeContainer/StakeContainer'
 import UnstakeContainer from '../components/UnstakeContainer/UnstakeContainer'
 import Toggle from '../components/UI/Toggle/Toggle'
 import { init } from '../hooks/useWallet'
+import Footer from "../components/footer/Footer.jsx";
 
 const MainPage = () => {
   const [isStakeActive, setIsStakeActive] = useState(true)
@@ -34,6 +35,7 @@ const MainPage = () => {
           {isStakeActive ? <StakeContainer /> : <UnstakeContainer />}
         </>
       )}
+      <Footer/>
     </>
   )
 }

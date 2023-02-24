@@ -1,0 +1,26 @@
+.footer {
+  @apply w-full px-4 py-8;
+  @apply bg-light-purple;
+  @apply flex content-center justify-between items-center;
+  border-bottom: 3px solid purple;
+  @apply shadow-default;
+  @apply capitalize;
+}
+
+.container {
+  @apply w-10/12;
+  @apply flex content-center justify-between m-auto;
+}
+
+.col {
+  @apply h-max;
+  @apply flex flex-col justify-start align-top;
+}
+
+.title {
+  @apply text-2xl font-bold;
+}
+
+a {
+  @apply hover:underline;
+}
