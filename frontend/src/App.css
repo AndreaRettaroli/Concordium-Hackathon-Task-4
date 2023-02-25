@@ -5,6 +5,12 @@
   @apply text-white;
 }
 
+.bg {
+  @apply backdrop-blur-sm -z-10;
+  @apply fixed;
+  @apply blur-sm;
+}
+
 .read-the-docs {
   color: #888;
 }

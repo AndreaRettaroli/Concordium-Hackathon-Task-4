@@ -6,5 +6,5 @@
 }
 
 .title {
-  @apply font-commodore text-5xl font-extrabold text-white;
+  @apply font-commodore text-5xl font-extrabold text-white cursor-pointer;
 }
