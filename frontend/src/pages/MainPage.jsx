@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import Header from '../components/header/Header'
-import DescriptionContainer from '../components/DescriptionContainer/DescriptionContainer'
-import StakeContainer from '../components/StakeContainer/StakeContainer'
-import UnstakeContainer from '../components/UnstakeContainer/UnstakeContainer'
+import DescriptionContainer from '../components/descriptionContainer/DescriptionContainer'
+import StakeContainer from '../components/stakeContainer/StakeContainer'
+import UnstakeContainer from '../components/unstakeContainer/UnstakeContainer'
 import Toggle from '../components/UI/Toggle/Toggle'
-import { init } from '../hooks/useWallet'
+import { init } from '../components/wallet/Wallet'
 import Footer from "../components/footer/Footer.jsx";
 
 const MainPage = () => {

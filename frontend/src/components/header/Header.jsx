@@ -1,5 +1,5 @@
 import React from 'react'
-import Wallet from '../../hooks/useWallet'
+import Wallet from '../wallet/Wallet'
 import style from './Header.module.css'
 
 const Header = ({ client, connectedAccount, setConnectedAccount }) => {
