@@ -22,7 +22,6 @@ const Form = () => {
       {errors.amount?.type === 'pattern' && <span className={style.error}>Enter a real number</span>}
       {errors.amount?.type === 'required' && <span className={style.error}>This field is required</span>}
 
-
       <Button
         disabled={errors.amount}
         type="submit"

@@ -10,7 +10,8 @@ input[type=number] {
 }
 
 .form {
-  @apply w-9/12 h-full flex flex-col justify-center items-stretch gap-8;
+  @apply w-9/12 h-full;
+  @apply flex flex-col justify-center items-stretch gap-8;
 }
 
 .input {
