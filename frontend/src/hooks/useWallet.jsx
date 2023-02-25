@@ -33,11 +33,15 @@ export async function connect(client, setConnectedAccount) {
   return setConnectedAccount(account)
 }
 
+export function disconnect(setConnectedAccount) {
+  return setConnectedAccount()
+}
+
 export default function Wallet(props) {
   const { client, connectedAccount, setConnectedAccount } = props
   console.log(
     '🚀 ~ file: useWallet.jsx:37 ~ Wallet ~ { client, connectedAccount, setConnectedAccount } ',
-    { client, connectedAccount, setConnectedAccount },
+    { client, connectedAccount },
   )
   return (
     <>
@@ -54,7 +58,12 @@ export default function Wallet(props) {
         </>
       )}
       {connectedAccount && (
-        <Button connected onClick={() => console.log('disconnect')}>
+        <Button
+          connected
+          onClick={() =>
+            disconnect(client, setConnectedAccount).catch(console.error)
+          }
+        >
           Disconnect <code>{connectedAccount.slice(0, 8).concat('.')}</code>.
         </Button>
       )}
