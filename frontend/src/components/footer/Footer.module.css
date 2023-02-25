@@ -5,20 +5,21 @@
   border-bottom: 3px solid purple;
   @apply shadow-default;
   @apply capitalize;
-}
+  }
 
 .container {
-  @apply w-10/12;
-  @apply flex content-center justify-between m-auto;
+  @apply w-10/12 m-auto;
+  @apply flex flex-wrap content-center justify-between;
 }
 
 .col {
   @apply h-max;
+  @apply mx-8;
   @apply flex flex-col justify-start align-top;
 }
 
 .title {
-  @apply text-2xl font-bold;
+  @apply text-2xl font-bold mt-6;
 }
 
 a {
