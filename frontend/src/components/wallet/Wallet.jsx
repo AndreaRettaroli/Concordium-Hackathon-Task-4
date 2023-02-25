@@ -7,7 +7,7 @@ import {
 } from '@concordium/web-sdk'
 
 import { detectConcordiumProvider } from '@concordium/browser-wallet-api-helpers'
-import Button from '../components/UI/button/Button'
+import Button from '../UI/button/Button'
 
 export async function init(setConnectedAccount) {
   const client = await detectConcordiumProvider()
@@ -60,9 +60,7 @@ export default function Wallet(props) {
       {connectedAccount && (
         <Button
           connected
-          onClick={() =>
-            disconnect(client, setConnectedAccount).catch(console.error)
-          }
+          onClick={() => disconnect(setConnectedAccount).catch(console.error)}
         >
           Disconnect <code>{connectedAccount.slice(0, 8).concat('.')}</code>.
         </Button>
