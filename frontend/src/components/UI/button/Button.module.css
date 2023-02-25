@@ -67,6 +67,10 @@
     2px 0 0 #4405fc;
 }
 
+.connected:hover {
+  box-shadow: 1px 1px 0 black;
+}
+
 .connected::before {
   display: inline-block;
   content: "";
