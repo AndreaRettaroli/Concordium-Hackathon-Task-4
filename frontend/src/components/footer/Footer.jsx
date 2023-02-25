@@ -17,7 +17,7 @@ const Footer = () => {
         <div className={style.col}>
           <h2 className={style.title}>Developers</h2>
           <a href="https://github.com/Concordium/concordium-rust-sdk">Concordium Rust SDK</a>
-          <a href="https://github.com/Concordium/concordium-node-sdk-js">Concordium Javascript (Node / Web) SDK</a>
+          <a href="https://github.com/Concordium/concordium-node-sdk-js">Concordium Javascript SDK</a>
         </div>
 
         <div className={style.col}>
