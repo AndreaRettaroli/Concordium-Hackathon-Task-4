@@ -12,7 +12,7 @@ const DescriptionContainer = () => {
           This is a Concordium Liquid Staking protocol. <br />
           Secure Concordium and earn rewards without your funds locked in.
           <br />
-          Get lqCCD, staked CCD supported all across the Concordium ecosystem.
+          Get wCCD, staked CCD supported all across the Concordium ecosystem.
         </p>
       </div>
     </Container>
