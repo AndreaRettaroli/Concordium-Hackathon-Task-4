@@ -3,7 +3,7 @@
   @apply bg-purple;
   @apply border-2 border-light-purple border-solid;
   @apply shadow-default;
-  @apply flex flex-col content-center items-center justify-between;
+  @apply flex flex-col content-center items-center justify-between gap-x-8;
 }
 
 .title {
