@@ -2,7 +2,7 @@ use std::io::Cursor;
 use std::convert::TryFrom;
 
 use borsh::BorshSchema;
-use concordium_rust_sdk::types::smart_contracts::concordium_contracts_common::AccountAddress;
+use concordium_rust_sdk::types::smart_contracts::concordium_contracts_common::{ AccountAddress, Serial, Deserial };
 
 use crate::error::CommonError;
 
@@ -134,5 +134,111 @@ impl List {
         )
     }
 
-    // TODO: Implement all below this https://github.com/marinade-finance/liquid-staking-program/blob/main/programs/marinade-finance/src/list.rs#L126
+    pub fn get<I: Deserial>(
+        &self,
+        data: &[u8],
+        index: u32,
+        list_name: &str,
+    ) -> Result<I, String> {
+        if index >= self.len() {
+            /*
+            msg!(
+                "list {} index out of bounds ({}/{})",
+                list_name,
+                index,
+                self.len()
+            );
+             */
+            return Err(ProgramError::InvalidArgument);
+        }
+        let start = 8 + (index * self.item_size()) as usize;
+        I::deserial(&mut &data[start..(start + self.item_size() as usize)])
+            .map_err(|err| err.to_string())
+    }
+
+    pub fn set<I: Serial>(
+        &self,
+        data: &mut [u8],
+        index: u32,
+        item: I,
+        list_name: &str,
+    ) -> ProgramResult {
+        if self.new_account != AccountAddress::default() {
+            // msg!("Can not modify list {} while changing list's account");
+            return Err(ProgramError::InvalidAccountData);
+        }
+        if index >= self.len() {
+            // msg!(
+            //     "list {} index out of bounds ({}/{})",
+            //     list_name,
+            //     index,
+            //     self.len()
+            // );
+            return Err(ProgramError::InvalidArgument);
+        }
+        let start = 8 + (index * self.item_size()) as usize;
+        let mut cursor = Cursor::new(&mut data[start..(start + self.item_size() as usize)]);
+        item.serial(&mut cursor)?;
+
+        Ok(())
+    }
+
+    pub fn push<I: Serial> (
+        &mut self,
+        data: &mut [u8],
+        item: I,
+        list_name: &str,
+    ) -> ProgramResult {
+        if self.new_account != AccountAddress::default() {
+            msg!("Can not modify list {} while changing list's account");
+            return Err(ProgramError::InvalidAccountData);
+        }
+        let capacity = self.capacity(data.len())?;
+        if self.len() >= capacity {
+            msg!("list {} with capacity {} is full", list_name, capacity);
+            return Err(ProgramError::AccountDataTooSmall);
+        }
+
+        let start = 8 + (self.len() * self.item_size()) as usize;
+        let mut cursor = Cursor::new(&mut data[start..(start + self.item_size() as usize)]);
+        item.serial(&mut cursor)?;
+
+        self.count += 1;
+
+        Ok(())
+    }
+
+    pub fn remove(
+        &mut self,
+        data: &mut [u8],
+        index: u32,
+        list_name: &str,
+    ) -> ProgramResult {
+        if self.new_account != AccountAddress::default() {
+            msg!("Can not modify list {} while changing list's account");
+            return Err(ProgramError::InvalidAccountData);
+        }
+        if index >= self.len() {
+            msg!(
+                "list {} remove out of bounds ({}/{})",
+                list_name,
+                index,
+                self.len()
+            );
+            return Err(ProgramError::InvalidArgument);
+        }
+
+        self.count -= 1;
+        if index == self.count {
+            return Ok(());
+        }
+        let start = 8 + (index * self.item_size()) as usize;
+        let last_item_start = 8 + (self.count * self.item_size()) as usize;
+        data.copy_within(
+            last_item_start..last_item_start + self.item_size() as usize,
+            start,
+        );
+
+        Ok(())
+    }
 }
