@@ -49,7 +49,6 @@ fn deposit<S: HasStateApi>(
     _amount: Amount,
 ) -> ReceiveResult<()> {
     host.state_mut().liquid_pool_state = LiquidPoolState::NotEmpty;
-    // TODO: Implement wCCD minting
     Ok(())
 }
 

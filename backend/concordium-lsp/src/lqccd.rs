@@ -2,8 +2,8 @@
 use concordium_cis2::{Cis2Event, *};
 use concordium_std::{collections::BTreeMap, *};
 
-/// The id of the wCCD token in this contract.
-const TOKEN_ID_CCD: ContractTokenId = TokenIdUnit();
+/// The id of the lqCCD token in this contract.
+const TOKEN_ID_LQCCD: ContractTokenId = TokenIdUnit();
 
 /// Tag for the NewAdmin event.
 pub const NEW_ADMIN_EVENT_TAG: u8 = 0;
@@ -62,8 +62,8 @@ struct State<S: HasStateApi> {
 /// The parameter type for the contract function `unwrap`.
 /// Takes an amount of tokens and unwraps the CCD and sends it to a receiver.
 #[derive(Serialize, SchemaType)]
-struct UnwrapParams {
-    /// The amount of tokens to unwrap.
+struct UnstakeParams {
+    /// The amount of tokens to unstake.
     amount:   ContractTokenAmount,
     /// The owner of the tokens.
     owner:    Address,
@@ -78,18 +78,20 @@ struct UnwrapParams {
 /// The parameter type for the contract function `wrap`.
 /// It includes a receiver for receiving the wrapped CCD tokens.
 #[derive(Serialize, SchemaType)]
-struct WrapParams {
+struct StakeParams {
     /// The address to receive these tokens.
     /// If the receiver is the sender of the message wrapping the tokens, it
     /// will not log a transfer event.
     to:   Receiver,
+    /// The amount of tokens to stake.
+    amount: ContractTokenAmount,
     /// Some additional data bytes are used in the `OnReceivingCis2` hook. Only
     /// if the `Receiver` is a contract and the `Receiver` is not
     /// the invoker of the wrap function the receive hook function is
     /// executed. The `OnReceivingCis2` hook invokes the function entrypoint
     /// specified in the `Receiver` with these additional data bytes as
     /// part of the input parameters. This action allows the receiving smart
-    /// contract to react to the credited wCCD amount.
+    /// contract to react to the credited lqCCD amount.
     data: AdditionalData,
 }
 
@@ -156,27 +158,27 @@ struct NewAdminEvent {
 }
 
 /// Tagged events to be serialized for the event log.
-enum WccdEvent {
+enum LqccdEvent {
     NewAdmin(NewAdminEvent),
     Cis2Event(Cis2Event<ContractTokenId, ContractTokenAmount>),
 }
 
-impl Serial for WccdEvent {
+impl Serial for LqccdEvent {
     fn serial<W: Write>(&self, out: &mut W) -> Result<(), W::Err> {
         match self {
-            WccdEvent::NewAdmin(event) => {
+            LqccdEvent::NewAdmin(event) => {
                 out.write_u8(NEW_ADMIN_EVENT_TAG)?;
                 event.serial(out)
             }
-            WccdEvent::Cis2Event(event) => event.serial(out),
+            LqccdEvent::Cis2Event(event) => event.serial(out),
         }
     }
 }
 
-/// Manual implementation of the `WccdEventSchema` which includes both the
+/// Manual implementation of the `LqccdEventSchema` which includes both the
 /// events specified in this contract and the events specified in the CIS-2
 /// library. The events are tagged to distinguish them on-chain.
-impl schema::SchemaType for WccdEvent {
+impl schema::SchemaType for LqccdEvent {
     fn get_type() -> schema::Type {
         let mut event_map = BTreeMap::new();
         event_map.insert(
@@ -335,7 +337,7 @@ impl<S: HasStateApi> State<S> {
         token_id: &ContractTokenId,
         address: &Address,
     ) -> ContractResult<ContractTokenAmount> {
-        ensure_eq!(token_id, &TOKEN_ID_WCCD, ContractError::InvalidTokenId);
+        ensure_eq!(token_id, &TOKEN_ID_LQCCD, ContractError::InvalidTokenId);
         Ok(self.token.get(address).map(|s| s.balance).unwrap_or_else(|| 0u64.into()))
     }
 
@@ -358,7 +360,7 @@ impl<S: HasStateApi> State<S> {
         to: &Address,
         state_builder: &mut StateBuilder<S>,
     ) -> ContractResult<()> {
-        ensure_eq!(token_id, &TOKEN_ID_WCCD, ContractError::InvalidTokenId);
+        ensure_eq!(token_id, &TOKEN_ID_LQCCD, ContractError::InvalidTokenId);
         if amount == 0u64.into() {
             return Ok(());
         }
@@ -402,7 +404,7 @@ impl<S: HasStateApi> State<S> {
         });
     }
 
-    /// Mint an amount of wCCD tokens.
+    /// Mint an amount of lqCCD tokens.
     /// Results in an error if the token id does not exist in the state.
     fn mint(
         &mut self,
@@ -411,7 +413,7 @@ impl<S: HasStateApi> State<S> {
         owner: &Address,
         state_builder: &mut StateBuilder<S>,
     ) -> ContractResult<()> {
-        ensure_eq!(token_id, &TOKEN_ID_WCCD, ContractError::InvalidTokenId);
+        ensure_eq!(token_id, &TOKEN_ID_LQCCD, ContractError::InvalidTokenId);
         let mut owner_state = self.token.entry(*owner).or_insert_with(|| AddressState {
             balance:   0u64.into(),
             operators: state_builder.new_set(),
@@ -421,7 +423,7 @@ impl<S: HasStateApi> State<S> {
         Ok(())
     }
 
-    /// Burn an amount of wCCD tokens.
+    /// Burn an amount of lqCCD tokens.
     /// Results in an error if the token id does not exist in the state or if
     /// the owner address has insufficient tokens to do the burn.
     fn burn(
@@ -430,7 +432,7 @@ impl<S: HasStateApi> State<S> {
         amount: ContractTokenAmount,
         owner: &Address,
     ) -> ContractResult<()> {
-        ensure_eq!(token_id, &TOKEN_ID_WCCD, ContractError::InvalidTokenId);
+        ensure_eq!(token_id, &TOKEN_ID_LQCCD, ContractError::InvalidTokenId);
         if amount == 0u64.into() {
             return Ok(());
         }
@@ -468,10 +470,10 @@ impl<S: HasStateApi> State<S> {
 /// Logs a `TokenMetadata` event with the metadata url and hash.
 /// Logs a `NewAdmin` event with the invoker as admin.
 #[init(
-    contract = "cis2_wCCD",
+    contract = "lqCCD",
     enable_logger,
     parameter = "SetMetadataUrlParams",
-    event = "WccdEvent"
+    event = "LqccdEvent"
 )]
 fn contract_init<S: HasStateApi>(
     ctx: &impl HasInitContext,
@@ -493,106 +495,80 @@ fn contract_init<S: HasStateApi>(
     // Construct the initial contract state.
     let state = State::new(state_builder, invoker, metadata_url.clone());
     // Log event for the newly minted token.
-    logger.log(&WccdEvent::Cis2Event(Cis2Event::Mint(MintEvent {
-        token_id: TOKEN_ID_WCCD,
+    logger.log(&LqccdEvent::Cis2Event(Cis2Event::Mint(MintEvent {
+        token_id: TOKEN_ID_LQCCD,
         amount:   ContractTokenAmount::from(0u64),
         owner:    invoker,
     })))?;
 
     // Log event for where to find metadata for the token
-    logger.log(&WccdEvent::Cis2Event(Cis2Event::TokenMetadata::<_, ContractTokenAmount>(
+    logger.log(&LqccdEvent::Cis2Event(Cis2Event::TokenMetadata::<_, ContractTokenAmount>(
         TokenMetadataEvent {
-            token_id: TOKEN_ID_WCCD,
+            token_id: TOKEN_ID_LQCCD,
             metadata_url,
         },
     )))?;
 
     // Log event for the new admin.
-    logger.log(&WccdEvent::NewAdmin(NewAdminEvent {
+    logger.log(&LqccdEvent::NewAdmin(NewAdminEvent {
         new_admin: invoker,
     }))?;
 
     Ok(state)
 }
 
-/// Wrap an amount of CCD into wCCD tokens and transfer the tokens if the sender
+/// Stake an amount of CCD into lqCCD tokens and transfer the tokens if the sender
 /// is not the receiver.
 #[receive(
-    contract = "cis2_wCCD",
-    name = "wrap",
-    parameter = "WrapParams",
+    contract = "lqCCD",
+    name = "stake",
+    parameter = "StakeParams",
     error = "ContractError",
     enable_logger,
-    mutable,
-    payable
+    mutable
 )]
-fn contract_wrap<S: HasStateApi>(
+fn contract_stake<S: HasStateApi>(
     ctx: &impl HasReceiveContext,
     host: &mut impl HasHost<State<S>, StateApiType = S>,
-    amount: Amount,
     logger: &mut impl HasLogger,
 ) -> ContractResult<()> {
     // Check that contract is not paused.
     ensure!(!host.state().paused, ContractError::Custom(CustomContractError::ContractPaused));
 
     // Parse the parameter.
-    let params: WrapParams = ctx.parameter_cursor().get()?;
+    let params: StakeParams = ctx.parameter_cursor().get()?;
+
     // Get the sender who invoked this contract function.
     let sender = ctx.sender();
 
     let receive_address = params.to.address();
 
+    let amount = params.amount;
+
     let (state, state_builder) = host.state_and_builder();
     // Update the state.
-    state.mint(&TOKEN_ID_WCCD, amount.micro_ccd.into(), &receive_address, state_builder)?;
+    state.mint(&TOKEN_ID_LQCCD, amount.micro_ccd.into(), &receive_address, state_builder)?;
 
     // Log the newly minted tokens.
-    logger.log(&WccdEvent::Cis2Event(Cis2Event::Mint(MintEvent {
-        token_id: TOKEN_ID_WCCD,
+    logger.log(&LqccdEvent::Cis2Event(Cis2Event::Mint(MintEvent {
+        token_id: TOKEN_ID_LQCCD,
         amount:   ContractTokenAmount::from(amount.micro_ccd),
         owner:    sender,
     })))?;
 
-    // Only logs a transfer event if the receiver is not the sender.
-    // Only executes the `OnReceivingCis2` hook if the receiver is not the sender
-    // and the receiver is a contract.
-    if sender != receive_address {
-        logger.log(&WccdEvent::Cis2Event(Cis2Event::Transfer(TransferEvent {
-            token_id: TOKEN_ID_WCCD,
-            amount:   ContractTokenAmount::from(amount.micro_ccd),
-            from:     sender,
-            to:       receive_address,
-        })))?;
-
-        // If the receiver is a contract: invoke the receive hook function.
-        if let Receiver::Contract(address, function) = params.to {
-            let parameter = OnReceivingCis2Params {
-                token_id: TOKEN_ID_WCCD,
-                amount:   ContractTokenAmount::from(amount.micro_ccd),
-                from:     sender,
-                data:     params.data,
-            };
-            host.invoke_contract(
-                &address,
-                &parameter,
-                function.as_entrypoint_name(),
-                Amount::zero(),
-            )?;
-        }
-    }
     Ok(())
 }
 
-/// Unwrap an amount of wCCD tokens into CCD
+/// Unstake an amount of lqCCD tokens into CCD
 #[receive(
-    contract = "cis2_wCCD",
-    name = "unwrap",
-    parameter = "UnwrapParams",
+    contract = "lqCCD",
+    name = "unstake",
+    parameter = "UnstakeParams",
     error = "ContractError",
     enable_logger,
     mutable
 )]
-fn contract_unwrap<S: HasStateApi>(
+fn contract_unstake<S: HasStateApi>(
     ctx: &impl HasReceiveContext,
     host: &mut impl HasHost<State<S>, StateApiType = S>,
     logger: &mut impl HasLogger,
@@ -601,7 +577,7 @@ fn contract_unwrap<S: HasStateApi>(
     ensure!(!host.state().paused, ContractError::Custom(CustomContractError::ContractPaused));
 
     // Parse the parameter.
-    let params: UnwrapParams = ctx.parameter_cursor().get()?;
+    let params: UnstakeParams = ctx.parameter_cursor().get()?;
 
     // Get the sender who invoked this contract function.
     let sender = ctx.sender();
@@ -614,29 +590,14 @@ fn contract_unwrap<S: HasStateApi>(
     );
 
     // Update the state.
-    state.burn(&TOKEN_ID_WCCD, params.amount, &params.owner)?;
+    state.burn(&TOKEN_ID_LQCCD, params.amount, &params.owner)?;
 
     // Log the burning of tokens.
-    logger.log(&WccdEvent::Cis2Event(Cis2Event::Burn(BurnEvent {
-        token_id: TOKEN_ID_WCCD,
+    logger.log(&LqccdEvent::Cis2Event(Cis2Event::Burn(BurnEvent {
+        token_id: TOKEN_ID_LQCCD,
         amount:   params.amount,
         owner:    params.owner,
     })))?;
-
-    let unwrapped_amount = Amount::from_micro_ccd(params.amount.into());
-
-    // Transfer the CCD to the receiver
-    match params.receiver {
-        Receiver::Account(address) => host.invoke_transfer(&address, unwrapped_amount)?,
-        Receiver::Contract(address, function) => {
-            host.invoke_contract(
-                &address,
-                &params.data,
-                function.as_entrypoint_name(),
-                unwrapped_amount,
-            )?;
-        }
-    }
 
     Ok(())
 }
@@ -647,7 +608,7 @@ fn contract_unwrap<S: HasStateApi>(
 /// - Sender is not the current admin of the contract instance.
 /// - It fails to parse the parameter.
 #[receive(
-    contract = "cis2_wCCD",
+    contract = "lqCCD",
     name = "updateAdmin",
     parameter = "Address",
     error = "ContractError",
@@ -669,7 +630,7 @@ fn contract_update_admin<S: HasStateApi>(
     host.state_mut().admin = new_admin;
 
     // Log a new admin event.
-    logger.log(&WccdEvent::NewAdmin(NewAdminEvent {
+    logger.log(&LqccdEvent::NewAdmin(NewAdminEvent {
         new_admin,
     }))?;
 
@@ -684,7 +645,7 @@ fn contract_update_admin<S: HasStateApi>(
 /// - Sender is not the admin of the contract instance.
 /// - It fails to parse the parameter.
 #[receive(
-    contract = "cis2_wCCD",
+    contract = "lqCCD",
     name = "setPaused",
     parameter = "SetPausedParams",
     error = "ContractError",
@@ -712,7 +673,7 @@ fn contract_set_paused<S: HasStateApi>(
 /// - Sender is not the admin of the contract instance.
 /// - It fails to parse the parameter.
 #[receive(
-    contract = "cis2_wCCD",
+    contract = "lqCCD",
     name = "setMetadataUrl",
     parameter = "SetMetadataUrlParams",
     error = "ContractError",
@@ -740,9 +701,9 @@ fn contract_state_set_metadata_url<S: HasStateApi>(
     *host.state_mut().metadata_url = metadata_url.clone();
 
     // Log an event including the new metadata for this token.
-    logger.log(&WccdEvent::Cis2Event(Cis2Event::TokenMetadata::<_, ContractTokenAmount>(
+    logger.log(&LqccdEvent::Cis2Event(Cis2Event::TokenMetadata::<_, ContractTokenAmount>(
         TokenMetadataEvent {
-            token_id: TOKEN_ID_WCCD,
+            token_id: TOKEN_ID_LQCCD,
             metadata_url,
         },
     )))?;
@@ -769,7 +730,7 @@ type TransferParameter = TransferParams<ContractTokenId, ContractTokenAmount>;
 /// - Fails to log event.
 /// - Any of the receive hook function calls rejects.
 #[receive(
-    contract = "cis2_wCCD",
+    contract = "lqCCD",
     name = "transfer",
     parameter = "TransferParameter",
     error = "ContractError",
@@ -805,7 +766,7 @@ fn contract_transfer<S: HasStateApi>(
         state.transfer(&token_id, amount, &from, &to_address, builder)?;
 
         // Log transfer event
-        logger.log(&WccdEvent::Cis2Event(Cis2Event::Transfer(TransferEvent {
+        logger.log(&LqccdEvent::Cis2Event(Cis2Event::Transfer(TransferEvent {
             token_id,
             amount,
             from,
@@ -838,7 +799,7 @@ fn contract_transfer<S: HasStateApi>(
 /// - It fails to parse the parameter.
 /// - Fails to log event.
 #[receive(
-    contract = "cis2_wCCD",
+    contract = "lqCCD",
     name = "updateOperator",
     parameter = "UpdateOperatorParams",
     error = "ContractError",
@@ -867,7 +828,7 @@ fn contract_update_operator<S: HasStateApi>(
         }
 
         // Log the appropriate event
-        logger.log(&WccdEvent::Cis2Event(
+        logger.log(&LqccdEvent::Cis2Event(
             Cis2Event::<ContractTokenId, ContractTokenAmount>::UpdateOperator(
                 UpdateOperatorEvent {
                     owner:    sender,
@@ -893,7 +854,7 @@ type ContractBalanceOfQueryResponse = BalanceOfQueryResponse<ContractTokenAmount
 /// - It fails to parse the parameter.
 /// - Any of the queried `token_id` does not exist.
 #[receive(
-    contract = "cis2_wCCD",
+    contract = "lqCCD",
     name = "balanceOf",
     parameter = "ContractBalanceOfQueryParams",
     return_value = "ContractBalanceOfQueryResponse",
@@ -922,7 +883,7 @@ fn contract_balance_of<S: HasStateApi>(
 /// It rejects if:
 /// - It fails to parse the parameter.
 #[receive(
-    contract = "cis2_wCCD",
+    contract = "lqCCD",
     name = "operatorOf",
     parameter = "OperatorOfQueryParams",
     return_value = "OperatorOfQueryResponse",
@@ -957,7 +918,7 @@ pub type ContractTokenMetadataQueryParams = TokenMetadataQueryParams<ContractTok
 /// - It fails to parse the parameter.
 /// - Any of the queried `token_id` does not exist.
 #[receive(
-    contract = "cis2_wCCD",
+    contract = "lqCCD",
     name = "tokenMetadata",
     parameter = "ContractTokenMetadataQueryParams",
     return_value = "TokenMetadataQueryResponse",
@@ -974,7 +935,7 @@ fn contract_token_metadata<S: HasStateApi>(
     let mut response = Vec::with_capacity(params.queries.len());
     for token_id in params.queries {
         // Check the token exists.
-        ensure_eq!(token_id, TOKEN_ID_WCCD, ContractError::InvalidTokenId);
+        ensure_eq!(token_id, TOKEN_ID_LQCCD, ContractError::InvalidTokenId);
 
         response.push(host.state().metadata_url.clone());
     }
@@ -984,7 +945,7 @@ fn contract_token_metadata<S: HasStateApi>(
 
 /// Function to view the basic state of the contract.
 #[receive(
-    contract = "cis2_wCCD",
+    contract = "lqCCD",
     name = "view",
     return_value = "ReturnBasicState",
     error = "ContractError"
@@ -1007,7 +968,7 @@ fn contract_view<S: HasStateApi>(
 /// It rejects if:
 /// - It fails to parse the parameter.
 #[receive(
-    contract = "cis2_wCCD",
+    contract = "lqCCD",
     name = "supports",
     parameter = "SupportsQueryParams",
     return_value = "SupportsQueryResponse",
@@ -1040,7 +1001,7 @@ fn contract_supports<S: HasStateApi>(
 /// - Sender is not the admin of the contract instance.
 /// - It fails to parse the parameter.
 #[receive(
-    contract = "cis2_wCCD",
+    contract = "lqCCD",
     name = "setImplementors",
     parameter = "SetImplementorsParams",
     error = "ContractError",
@@ -1075,7 +1036,7 @@ fn contract_set_implementor<S: HasStateApi>(
 /// by this function it would overwrite the state stored by the migration
 /// function.
 #[receive(
-    contract = "cis2_wCCD",
+    contract = "lqCCD",
     name = "upgrade",
     parameter = "UpgradeParams",
     error = "ContractError",
