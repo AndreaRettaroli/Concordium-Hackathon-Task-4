@@ -1,9 +1,8 @@
 // Pulling in everything from the smart contract standard library.
 use concordium_std::*;
-use std::format;
 
 /// The state of liquid pool
-#[derive(Debug, Serialize, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Serialize, SchemaType, PartialEq, Eq, Clone, Copy)]
 enum LiquidPoolState {
     /// Liquid pool is empty
     Empty,
