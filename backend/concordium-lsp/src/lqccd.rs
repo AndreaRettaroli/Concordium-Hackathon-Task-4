@@ -20,7 +20,7 @@ const SUPPORTS_STANDARDS: [StandardIdentifier<'static>; 2] =
 type ContractTokenId = TokenIdUnit;
 
 /// Contract token amount type.
-/// Since this contract is wrapping the CCD and the CCD can be represented as a
+/// Since this contract is staking the CCD and the CCD can be represented as a
 /// u64, we can specialize the token amount to u64 reducing module size and cost
 /// of arithmetics.
 type ContractTokenAmount = TokenAmountU64;
@@ -59,35 +59,35 @@ struct State<S: HasStateApi> {
     metadata_url: StateBox<concordium_cis2::MetadataUrl, S>,
 }
 
-/// The parameter type for the contract function `unwrap`.
-/// Takes an amount of tokens and unwraps the CCD and sends it to a receiver.
+/// The parameter type for the contract function `unstake`.
+/// Takes an amount of tokens and unstakes the CCD and sends it to a receiver.
 #[derive(Serialize, SchemaType)]
 struct UnstakeParams {
     /// The amount of tokens to unstake.
     amount:   ContractTokenAmount,
     /// The owner of the tokens.
     owner:    Address,
-    /// The address to receive these unwrapped CCD.
+    /// The address to receive these unstakeped CCD.
     receiver: Receiver,
-    /// If the `Receiver` is a contract the unwrapped CCD together with these
+    /// If the `Receiver` is a contract the unstakeped CCD together with these
     /// additional data bytes are sent to the function entrypoint specified in
     /// the `Receiver`.
     data:     AdditionalData,
 }
 
-/// The parameter type for the contract function `wrap`.
-/// It includes a receiver for receiving the wrapped CCD tokens.
+/// The parameter type for the contract function `stake`.
+/// It includes a receiver for receiving the stakeped CCD tokens.
 #[derive(Serialize, SchemaType)]
 struct StakeParams {
     /// The address to receive these tokens.
-    /// If the receiver is the sender of the message wrapping the tokens, it
+    /// If the receiver is the sender of the message staking the tokens, it
     /// will not log a transfer event.
     to:   Receiver,
     /// The amount of tokens to stake.
     amount: ContractTokenAmount,
     /// Some additional data bytes are used in the `OnReceivingCis2` hook. Only
     /// if the `Receiver` is a contract and the `Receiver` is not
-    /// the invoker of the wrap function the receive hook function is
+    /// the invoker of the stake function the receive hook function is
     /// executed. The `OnReceivingCis2` hook invokes the function entrypoint
     /// specified in the `Receiver` with these additional data bytes as
     /// part of the input parameters. This action allows the receiving smart
@@ -547,12 +547,12 @@ fn contract_stake<S: HasStateApi>(
 
     let (state, state_builder) = host.state_and_builder();
     // Update the state.
-    state.mint(&TOKEN_ID_LQCCD, amount.micro_ccd.into(), &receive_address, state_builder)?;
+    state.mint(&TOKEN_ID_LQCCD, amount, &receive_address, state_builder)?;
 
     // Log the newly minted tokens.
     logger.log(&LqccdEvent::Cis2Event(Cis2Event::Mint(MintEvent {
         token_id: TOKEN_ID_LQCCD,
-        amount:   ContractTokenAmount::from(amount.micro_ccd),
+        amount:   amount,
         owner:    sender,
     })))?;
 
@@ -638,7 +638,7 @@ fn contract_update_admin<S: HasStateApi>(
 }
 
 /// Pause/Unpause this smart contract instance by the admin. All non-admin
-/// state-mutative functions (wrap, unwrap, transfer, updateOperator) cannot be
+/// state-mutative functions (stake, unstake, transfer, updateOperator) cannot be
 /// executed when the contract is paused.
 ///
 /// It rejects if:
@@ -1065,4 +1065,804 @@ fn contract_upgrade<S: HasStateApi>(
         )?;
     }
     Ok(())
+}
+
+// Tests
+
+#[concordium_cfg_test]
+mod tests {
+    use super::*;
+    use test_infrastructure::*;
+
+    const ACCOUNT_0: AccountAddress = AccountAddress([0u8; 32]);
+    const ADDRESS_0: Address = Address::Account(ACCOUNT_0);
+    const ACCOUNT_1: AccountAddress = AccountAddress([1u8; 32]);
+    const ADDRESS_1: Address = Address::Account(ACCOUNT_1);
+    const ADMIN_ACCOUNT: AccountAddress = AccountAddress([2u8; 32]);
+    const ADMIN_ADDRESS: Address = Address::Account(ADMIN_ACCOUNT);
+    const NEW_ADMIN_ACCOUNT: AccountAddress = AccountAddress([3u8; 32]);
+    const NEW_ADMIN_ADDRESS: Address = Address::Account(NEW_ADMIN_ACCOUNT);
+
+    // The metadata url for the lqCCD token.
+    const INITIAL_TOKEN_METADATA_URL: &str = "https://some.example/token/lqccd";
+
+    /// Test helper function which creates a contract state where ADDRESS_0 owns
+    /// 400 tokens.
+    fn initial_state<S: HasStateApi>(state_builder: &mut StateBuilder<S>) -> State<S> {
+        // Set up crypto primitives to hash the document.
+        let crypto_primitives = TestCryptoPrimitives::new();
+        // The hash of the document stored at the above URL.
+        let initial_metadata_hash: Sha256 =
+            crypto_primitives.hash_sha2_256("document".as_bytes()).0;
+
+        let metadata_url = concordium_cis2::MetadataUrl {
+            url:  INITIAL_TOKEN_METADATA_URL.to_string(),
+            hash: Some(initial_metadata_hash),
+        };
+
+        let mut state = State::new(state_builder, ADMIN_ADDRESS, metadata_url);
+        state
+            .mint(&TOKEN_ID_LQCCD, 400u64.into(), &ADDRESS_0, state_builder)
+            .expect_report("Failed to setup state");
+        state
+    }
+
+    /// Test initialization succeeds and the tokens are owned by the contract
+    /// instantiator and the appropriate events are logged.
+    #[concordium_test]
+    fn lqccd_test_init() {
+        // Set up the context
+        let mut ctx = TestInitContext::empty();
+        ctx.set_init_origin(ACCOUNT_0);
+
+        let mut logger = TestLogger::init();
+        let mut builder = TestStateBuilder::new();
+
+        // Set up crypto primitives to hash the document.
+        let crypto_primitives = TestCryptoPrimitives::new();
+        // The hash of the document stored at the above URL.
+        let initial_metadata_hash: Sha256 =
+            crypto_primitives.hash_sha2_256("document".as_bytes()).0;
+
+        // Set up the parameter.
+        let parameter = SetMetadataUrlParams {
+            url:  String::from(INITIAL_TOKEN_METADATA_URL),
+            hash: Some(initial_metadata_hash),
+        };
+        let parameter_bytes = to_bytes(&parameter);
+        ctx.set_parameter(&parameter_bytes);
+
+        // Call the contract function.
+        let result = contract_init(&ctx, &mut builder, &mut logger);
+
+        // Check the result
+        let state = result.expect_report("Contract initialization failed");
+
+        // Check the state
+        claim_eq!(state.token.iter().count(), 0, "Only one token is initialized");
+        let balance0 =
+            state.balance(&TOKEN_ID_LQCCD, &ADDRESS_0).expect_report("Token is expected to exist");
+        claim_eq!(
+            balance0,
+            0u64.into(),
+            "No initial tokens are owned by the contract instantiator"
+        );
+
+        // Check the logs
+        claim_eq!(logger.logs.len(), 3, "Exactly three events should be logged");
+        claim!(
+            logger.logs.contains(&to_bytes(&LqccdEvent::Cis2Event(Cis2Event::Mint(MintEvent {
+                owner:    ADDRESS_0,
+                token_id: TOKEN_ID_LQCCD,
+                amount:   ContractTokenAmount::from(0),
+            })))),
+            "Missing event for minting the token"
+        );
+        claim!(
+            logger.logs.contains(&to_bytes(&LqccdEvent::Cis2Event(Cis2Event::TokenMetadata::<
+                _,
+                ContractTokenAmount,
+            >(
+                TokenMetadataEvent {
+                    token_id:     TOKEN_ID_LQCCD,
+                    metadata_url: MetadataUrl {
+                        url:  String::from(INITIAL_TOKEN_METADATA_URL),
+                        hash: Some(initial_metadata_hash),
+                    },
+                }
+            )))),
+            "Missing event with metadata for the token"
+        );
+        claim!(
+            logger.logs.contains(&to_bytes(&LqccdEvent::NewAdmin(NewAdminEvent {
+                new_admin: ADDRESS_0,
+            }))),
+            "Missing event for the new admin"
+        );
+    }
+
+    /// Test only admin can setMetadataUrl
+    #[concordium_test]
+    #[cfg(feature = "crypto-primitives")]
+    fn test_set_metadata_url() {
+        let mut logger = TestLogger::init();
+        let mut state_builder = TestStateBuilder::new();
+
+        // Set up crypto primitives to hash the document.
+        let crypto_primitives = TestCryptoPrimitives::new();
+        // The hash of the document stored at the above URL.
+        let initial_metadata_hash: Sha256 =
+            crypto_primitives.hash_sha2_256("document".as_bytes()).0;
+
+        let metadata_url = concordium_cis2::MetadataUrl {
+            url:  INITIAL_TOKEN_METADATA_URL.to_string(),
+            hash: Some(initial_metadata_hash),
+        };
+
+        let state = State::new(&mut state_builder, ADMIN_ADDRESS, metadata_url);
+        let mut host = TestHost::new(state, state_builder);
+
+        // Set up the context
+        let mut ctx = TestReceiveContext::empty();
+        ctx.set_sender(ADMIN_ADDRESS);
+
+        // Create a new_url and a new_hash
+        let new_url = "https://some.example/token/lqccd/updated".to_string();
+        let new_hash = crypto_primitives.hash_sha2_256("document2".as_bytes()).0;
+
+        // Set up the parameter.
+        let parameter = SetMetadataUrlParams {
+            url:  new_url.clone(),
+            hash: Some(new_hash),
+        };
+        let parameter_bytes = to_bytes(&parameter);
+        ctx.set_parameter(&parameter_bytes);
+
+        // Call the contract function.
+        let result = contract_state_set_metadata_url(&ctx, &mut host, &mut logger);
+        // Check the result.
+        claim!(result.is_ok(), "Results in rejection");
+
+        // Check the logs
+        claim_eq!(logger.logs.len(), 1, "Exactly one event should be logged");
+        claim!(
+            logger.logs.contains(&to_bytes(&LqccdEvent::Cis2Event(Cis2Event::TokenMetadata::<
+                _,
+                ContractTokenAmount,
+            >(
+                TokenMetadataEvent {
+                    token_id:     TOKEN_ID_LQCCD,
+                    metadata_url: MetadataUrl {
+                        url:  new_url.clone(),
+                        hash: Some(new_hash),
+                    },
+                }
+            )))),
+            "Missing event with updated metadata for the token"
+        );
+
+        // Check the state.
+        let url = host.state().metadata_url.url.clone();
+        let hash = host.state().metadata_url.hash;
+        claim_eq!(url, new_url, "Expected url being updated");
+        claim_eq!(hash, Some(new_hash), "Expected hash being updated");
+
+        // Check only the admin can update the metadata URL
+        ctx.set_sender(ADDRESS_0);
+
+        // Call the contract function.
+        let err = contract_state_set_metadata_url(&ctx, &mut host, &mut logger);
+
+        // Check that ADDRESS_0 was not successful in updating the metadata url.
+        claim_eq!(err, Err(ContractError::Unauthorized), "Error is expected to be Unauthorized")
+    }
+
+    /// Test transfer succeeds, when `from` is the sender.
+    #[concordium_test]
+    fn test_transfer_account() {
+        // Set up the context
+        let mut ctx = TestReceiveContext::empty();
+        ctx.set_sender(ADDRESS_0);
+
+        // Set up the parameter.
+        let transfer = Transfer {
+            token_id: TOKEN_ID_LQCCD,
+            amount:   ContractTokenAmount::from(100),
+            from:     ADDRESS_0,
+            to:       Receiver::from_account(ACCOUNT_1),
+            data:     AdditionalData::empty(),
+        };
+        let parameter = TransferParams::from(vec![transfer]);
+        let parameter_bytes = to_bytes(&parameter);
+        ctx.set_parameter(&parameter_bytes);
+
+        let mut logger = TestLogger::init();
+        let mut state_builder = TestStateBuilder::new();
+
+        // Set up crypto primitives to hash the document.
+        let crypto_primitives = TestCryptoPrimitives::new();
+        // The hash of the document stored at the above URL.
+        let initial_metadata_hash: Sha256 =
+            crypto_primitives.hash_sha2_256("document".as_bytes()).0;
+
+        let metadata_url = concordium_cis2::MetadataUrl {
+            url:  INITIAL_TOKEN_METADATA_URL.to_string(),
+            hash: Some(initial_metadata_hash),
+        };
+
+        let mut state = State::new(&mut state_builder, ADMIN_ADDRESS, metadata_url);
+        state
+            .mint(&TOKEN_ID_LQCCD, 400.into(), &ADDRESS_0, &mut state_builder)
+            .expect_report("Failed to setup state");
+        let mut host = TestHost::new(state, state_builder);
+
+        // Call the contract function.
+        let result: ContractResult<()> = contract_transfer(&ctx, &mut host, &mut logger);
+        // Check the result.
+        claim!(result.is_ok(), "Results in rejection");
+
+        // Check the state.
+        let balance0 = host
+            .state()
+            .balance(&TOKEN_ID_LQCCD, &ADDRESS_0)
+            .expect_report("Token is expected to exist");
+        let balance1 = host
+            .state()
+            .balance(&TOKEN_ID_LQCCD, &ADDRESS_1)
+            .expect_report("Token is expected to exist");
+        claim_eq!(
+            balance0,
+            300.into(),
+            "Token owner balance should be decreased by the transferred amount"
+        );
+        claim_eq!(
+            balance1,
+            100.into(),
+            "Token receiver balance should be increased by the transferred amount"
+        );
+
+        // Check the logs.
+        claim_eq!(logger.logs.len(), 1, "Only one event should be logged");
+        claim_eq!(
+            logger.logs[0],
+            to_bytes(&LqccdEvent::Cis2Event(Cis2Event::Transfer(TransferEvent {
+                from:     ADDRESS_0,
+                to:       ADDRESS_1,
+                token_id: TOKEN_ID_LQCCD,
+                amount:   ContractTokenAmount::from(100),
+            }))),
+            "Incorrect event emitted"
+        )
+    }
+
+    /// Test transfer token fails, when sender is neither the owner or an
+    /// operator of the owner.
+    #[concordium_test]
+    fn test_transfer_not_authorized() {
+        // Set up the context
+        let mut ctx = TestReceiveContext::empty();
+        ctx.set_sender(ADDRESS_1);
+
+        // Set up the parameter.
+        let transfer = Transfer {
+            from:     ADDRESS_0,
+            to:       Receiver::from_account(ACCOUNT_1),
+            token_id: TOKEN_ID_LQCCD,
+            amount:   ContractTokenAmount::from(100),
+            data:     AdditionalData::empty(),
+        };
+        let parameter = TransferParams::from(vec![transfer]);
+        let parameter_bytes = to_bytes(&parameter);
+        ctx.set_parameter(&parameter_bytes);
+
+        let mut logger = TestLogger::init();
+        let mut state_builder = TestStateBuilder::new();
+        let state = initial_state(&mut state_builder);
+        let mut host = TestHost::new(state, state_builder);
+
+        // Call the contract function.
+        let result: ContractResult<()> = contract_transfer(&ctx, &mut host, &mut logger);
+        // Check the result.
+        let err = result.expect_err_report("Expected to fail");
+        claim_eq!(err, ContractError::Unauthorized, "Error is expected to be Unauthorized")
+    }
+
+    /// Test transfer succeeds when sender is not the owner, but is an operator
+    /// of the owner.
+    #[concordium_test]
+    fn test_operator_transfer() {
+        // Set up the context
+        let mut ctx = TestReceiveContext::empty();
+        ctx.set_sender(ADDRESS_1);
+
+        // Set up the parameter.
+        let transfer = Transfer {
+            from:     ADDRESS_0,
+            to:       Receiver::from_account(ACCOUNT_1),
+            token_id: TOKEN_ID_LQCCD,
+            amount:   ContractTokenAmount::from(100),
+            data:     AdditionalData::empty(),
+        };
+        let parameter = TransferParams::from(vec![transfer]);
+        let parameter_bytes = to_bytes(&parameter);
+        ctx.set_parameter(&parameter_bytes);
+
+        let mut logger = TestLogger::init();
+        let mut state_builder = TestStateBuilder::new();
+        let mut state = initial_state(&mut state_builder);
+        state.add_operator(&ADDRESS_0, &ADDRESS_1, &mut state_builder);
+        let mut host = TestHost::new(state, state_builder);
+
+        // Call the contract function.
+        let result: ContractResult<()> = contract_transfer(&ctx, &mut host, &mut logger);
+
+        // Check the result.
+        claim!(result.is_ok(), "Results in rejection");
+
+        // Check the state.
+        let balance0 = host
+            .state()
+            .balance(&TOKEN_ID_LQCCD, &ADDRESS_0)
+            .expect_report("Token is expected to exist");
+        let balance1 = host
+            .state()
+            .balance(&TOKEN_ID_LQCCD, &ADDRESS_1)
+            .expect_report("Token is expected to exist");
+        claim_eq!(
+            balance0,
+            300.into(),
+            "Token owner balance should be decreased by the transferred amount"
+        );
+        claim_eq!(
+            balance1,
+            100.into(),
+            "Token receiver balance should be increased by the transferred amount"
+        );
+
+        // Check the logs.
+        claim_eq!(logger.logs.len(), 1, "Only one event should be logged");
+        claim_eq!(
+            logger.logs[0],
+            to_bytes(&LqccdEvent::Cis2Event(Cis2Event::Transfer(TransferEvent {
+                from:     ADDRESS_0,
+                to:       ADDRESS_1,
+                token_id: TOKEN_ID_LQCCD,
+                amount:   ContractTokenAmount::from(100),
+            }))),
+            "Incorrect event emitted"
+        )
+    }
+
+    /// Test adding an operator succeeds and the appropriate event is logged.
+    #[concordium_test]
+    fn test_add_operator() {
+        // Set up the context
+        let mut ctx = TestReceiveContext::empty();
+        ctx.set_sender(ADDRESS_0);
+
+        // Set up the parameter.
+        let update = UpdateOperator {
+            operator: ADDRESS_1,
+            update:   OperatorUpdate::Add,
+        };
+        let parameter = UpdateOperatorParams(vec![update]);
+        let parameter_bytes = to_bytes(&parameter);
+        ctx.set_parameter(&parameter_bytes);
+
+        let mut logger = TestLogger::init();
+        let mut state_builder = TestStateBuilder::new();
+        let state = initial_state(&mut state_builder);
+        let mut host = TestHost::new(state, state_builder);
+
+        // Call the contract function.
+        let result: ContractResult<()> = contract_update_operator(&ctx, &mut host, &mut logger);
+
+        // Check the result.
+        claim!(result.is_ok(), "Results in rejection");
+
+        // Check the state.
+        claim!(host.state().is_operator(&ADDRESS_1, &ADDRESS_0), "Account should be an operator");
+
+        // Checking that `ADDRESS_1` is an operator in the query response of the
+        // `contract_operator_of` function as well.
+        // Set up the parameter.
+        let operator_of_query = OperatorOfQuery {
+            address: ADDRESS_1,
+            owner:   ADDRESS_0,
+        };
+
+        let operator_of_query_vector = OperatorOfQueryParams {
+            queries: vec![operator_of_query],
+        };
+        let parameter_bytes = to_bytes(&operator_of_query_vector);
+
+        ctx.set_parameter(&parameter_bytes);
+
+        // Checking the return value of the `contract_operator_of` function
+        let result: ContractResult<OperatorOfQueryResponse> = contract_operator_of(&ctx, &host);
+
+        claim_eq!(
+            result.expect_report("Failed getting result value").0,
+            [true],
+            "Account should be an operator in the query response"
+        );
+
+        // Check the logs.
+        claim_eq!(logger.logs.len(), 1, "One event should be logged");
+        claim_eq!(
+            logger.logs[0],
+            to_bytes(&LqccdEvent::Cis2Event(
+                Cis2Event::<ContractTokenId, ContractTokenAmount>::UpdateOperator(
+                    UpdateOperatorEvent {
+                        owner:    ADDRESS_0,
+                        operator: ADDRESS_1,
+                        update:   OperatorUpdate::Add,
+                    }
+                )
+            )),
+            "Incorrect event emitted"
+        )
+    }
+
+    /// Test stake and unstake functions.
+    #[concordium_test]
+    fn test_stake_and_unstake() {
+        // Set up the context.
+        let mut ctx = TestReceiveContext::empty();
+        ctx.set_sender(ADDRESS_1);
+
+        let mut logger = TestLogger::init();
+        let mut state_builder = TestStateBuilder::new();
+        let state = initial_state(&mut state_builder);
+        let mut host = TestHost::new(state, state_builder);
+
+        let amount = 100;
+
+        // Set up the parameter.
+        let stake_params = StakeParams {
+            to:   Receiver::from_account(ACCOUNT_1),
+            amount: ContractTokenAmount::from(amount),
+            data: AdditionalData::empty(),
+        };
+        let parameter_bytes = to_bytes(&stake_params);
+        ctx.set_parameter(&parameter_bytes);
+
+        // Testing the `stake` function
+
+        // ADDRESS_1 stakes some CCD.
+        let result: ContractResult<()> =
+            contract_stake(&ctx, &mut host, &mut logger);
+
+        // Check the result.
+        claim!(result.is_ok(), "Results in rejection");
+
+        // Check the lqCCD balance of ADDRESS_1.
+        let balance0 = host
+            .state()
+            .balance(&TOKEN_ID_LQCCD, &ADDRESS_1)
+            .expect_report("Token is expected to exist");
+        claim_eq!(
+            balance0,
+            ContractTokenAmount::from(amount),
+            "ADDRESS_1 should have received lqCCD tokens"
+        );
+
+        // Testing the `unstake` function
+
+        // Set up the parameter.
+        let unstake_params = UnstakeParams {
+            amount:   ContractTokenAmount::from(amount),
+            owner:    ADDRESS_1,
+            receiver: Receiver::from_account(ACCOUNT_1),
+            data:     AdditionalData::empty(),
+        };
+        let parameter_bytes = to_bytes(&unstake_params);
+        ctx.set_parameter(&parameter_bytes);
+
+        host.set_self_balance(Amount::from_micro_ccd(amount));
+
+        // ADDRESS_1 unstakes some lqCCD.
+        let result: ContractResult<()> = contract_unstake(&ctx, &mut host, &mut logger);
+        // Check the result.
+        claim!(result.is_ok(), "Results in rejection");
+
+        // Check the lqCCD balance of ADDRESS_1.
+        let balance0 = host
+            .state()
+            .balance(&TOKEN_ID_LQCCD, &ADDRESS_1)
+            .expect_report("Token is expected to exist");
+
+        claim_eq!(
+            balance0,
+            ContractTokenAmount::from(0),
+            "ADDRESS_1 should have no LQCCD tokens anymore"
+        );
+    }
+
+    // /// Test unstaking to a receiver account that doesn't exist.
+    // ///
+    // /// This test also showcases the use of [`TestHost::with_rollback`],
+    // /// which handles rolling back the state if a receive function rejects.
+    // #[concordium_test]
+    // fn test_unstake_to_missing_account() {
+    //     // Set up the context
+    //     let mut ctx = TestReceiveContext::empty();
+    //     ctx.set_sender(ADDRESS_0);
+    //
+    //     // Set up the parameter.
+    //     let parameter = UnstakeParams {
+    //         amount:   ContractTokenAmount::from(100),
+    //         owner:    ADDRESS_0,
+    //         receiver: Receiver::from_account(ACCOUNT_1),
+    //         data:     AdditionalData::empty(),
+    //     };
+    //     let parameter_bytes = to_bytes(&parameter);
+    //     ctx.set_parameter(&parameter_bytes);
+    //
+    //     let mut logger = TestLogger::init();
+    //     let mut state_builder = TestStateBuilder::new();
+    //     let state = initial_state(&mut state_builder);
+    //     let mut host = TestHost::new(state, state_builder);
+    //
+    //     // Make ACCOUNT_1 missing such that transfers to it will fail.
+    //     host.make_account_missing(ACCOUNT_1);
+    //
+    //     // Call the contract function. Note the use of `with_rollback`.
+    //     let result: ContractResult<()> =
+    //         host.with_rollback(|host| contract_unstake(&ctx, host, &mut logger));
+    //
+    //     claim_eq!(
+    //         result,
+    //         Err(ContractError::Custom(CustomContractError::InvokeTransferError)),
+    //         "InvokeTransferError should have occurred"
+    //     );
+    //
+    //     // The balance should still be 400 due to the rollback after rejecting.
+    //     claim_eq!(
+    //         host.state().balance(&TOKEN_ID_LQCCD, &ADDRESS_0),
+    //         Ok(400u64.into()),
+    //         "ADDRESS_0 balance should still be 400"
+    //     );
+    //     claim!(host.get_transfers().is_empty(), "No transfers should have happened");
+    // }
+
+    /// Test admin can update to a new admin address.
+    #[concordium_test]
+    fn test_update_admin() {
+        // Set up the context
+        let mut ctx = TestReceiveContext::empty();
+        ctx.set_sender(ADMIN_ADDRESS);
+        let mut logger = TestLogger::init();
+
+        // Set up the parameter.
+        let parameter_bytes = to_bytes(&[NEW_ADMIN_ADDRESS]);
+        ctx.set_parameter(&parameter_bytes);
+
+        // Set up the state and host.
+        let mut state_builder = TestStateBuilder::new();
+        let state = initial_state(&mut state_builder);
+        let mut host = TestHost::new(state, state_builder);
+
+        // Check the admin state.
+        claim_eq!(host.state().admin, ADMIN_ADDRESS, "Admin should be the old admin address");
+
+        // Call the contract function.
+        let result: ContractResult<()> = contract_update_admin(&ctx, &mut host, &mut logger);
+
+        // Check the result.
+        claim!(result.is_ok(), "Results in rejection");
+
+        // Check the admin state.
+        claim_eq!(host.state().admin, NEW_ADMIN_ADDRESS, "Admin should be the new admin address");
+
+        // Check the logs
+        claim_eq!(logger.logs.len(), 1, "Exactly one event should be logged");
+
+        // Check the event
+        claim!(
+            logger.logs.contains(&to_bytes(&LqccdEvent::NewAdmin(NewAdminEvent {
+                new_admin: NEW_ADMIN_ADDRESS,
+            }))),
+            "Missing event for the new admin"
+        );
+    }
+
+    /// Test that only the current admin can update the admin address.
+    #[concordium_test]
+    fn test_update_admin_not_authorized() {
+        // Set up the context.
+        let mut ctx = TestReceiveContext::empty();
+        // NEW_ADMIN is not the current admin but tries to update the admin variable to
+        // its own address.
+        ctx.set_sender(NEW_ADMIN_ADDRESS);
+        let mut logger = TestLogger::init();
+
+        // Set up the parameter.
+        let parameter_bytes = to_bytes(&[NEW_ADMIN_ADDRESS]);
+        ctx.set_parameter(&parameter_bytes);
+
+        // Set up the state and host.
+        let mut state_builder = TestStateBuilder::new();
+        let state = initial_state(&mut state_builder);
+        let mut host = TestHost::new(state, state_builder);
+
+        // Check the admin state.
+        claim_eq!(host.state().admin, ADMIN_ADDRESS, "Admin should be the old admin address");
+
+        // Call the contract function.
+        let result: ContractResult<()> = contract_update_admin(&ctx, &mut host, &mut logger);
+
+        // Check that invoke failed.
+        claim_eq!(
+            result,
+            Err(ContractError::Unauthorized),
+            "Update admin should fail because not the current admin tries to update"
+        );
+
+        // Check the admin state.
+        claim_eq!(host.state().admin, ADMIN_ADDRESS, "Admin should be still the old admin address");
+    }
+
+    /// Test pausing the contract.
+    #[concordium_test]
+    fn test_pause() {
+        // Set up the context.
+        let mut ctx = TestReceiveContext::empty();
+        ctx.set_sender(ADMIN_ADDRESS);
+
+        // Set up the parameter to pause the contract.
+        let parameter_bytes = to_bytes(&true);
+        ctx.set_parameter(&parameter_bytes);
+
+        // Set up the state and host.
+        let mut state_builder = TestStateBuilder::new();
+        let state = initial_state(&mut state_builder);
+        let mut host = TestHost::new(state, state_builder);
+
+        // Call the contract function.
+        let result: ContractResult<()> = contract_set_paused(&ctx, &mut host);
+
+        // Check the result.
+        claim!(result.is_ok(), "Results in rejection");
+
+        // Check contract is paused.
+        claim_eq!(host.state().paused, true, "Smart contract should be paused");
+    }
+
+    /// Test unpausing the contract.
+    #[concordium_test]
+    fn test_unpause() {
+        // Set up the context.
+        let mut ctx = TestReceiveContext::empty();
+        ctx.set_sender(ADMIN_ADDRESS);
+
+        // Set up the parameter to pause the contract.
+        let parameter_bytes = to_bytes(&true);
+        ctx.set_parameter(&parameter_bytes);
+
+        // Set up the state and host.
+        let mut state_builder = TestStateBuilder::new();
+        let state = initial_state(&mut state_builder);
+        let mut host = TestHost::new(state, state_builder);
+
+        // Call the contract function.
+        let result: ContractResult<()> = contract_set_paused(&ctx, &mut host);
+
+        // Check the result.
+        claim!(result.is_ok(), "Results in rejection");
+
+        // Check contract is paused.
+        claim_eq!(host.state().paused, true, "Smart contract should be paused");
+
+        // Set up the parameter to unpause the contract.
+        let parameter_bytes = to_bytes(&false);
+        ctx.set_parameter(&parameter_bytes);
+
+        // Call the contract function.
+        let result: ContractResult<()> = contract_set_paused(&ctx, &mut host);
+
+        // Check the result.
+        claim!(result.is_ok(), "Results in rejection");
+
+        // Check contract is unpaused.
+        claim_eq!(host.state().paused, false, "Smart contract should be unpaused");
+    }
+
+    /// Test that only the current admin can pause/unpause the contract.
+    #[concordium_test]
+    fn test_pause_not_authorized() {
+        // Set up the context.
+        let mut ctx = TestReceiveContext::empty();
+        // NEW_ADMIN is not the current admin but tries to pause/unpause the contract.
+        ctx.set_sender(NEW_ADMIN_ADDRESS);
+
+        // Set up the parameter to pause the contract.
+        let parameter_bytes = to_bytes(&true);
+        ctx.set_parameter(&parameter_bytes);
+
+        // Set up the state and host.
+        let mut state_builder = TestStateBuilder::new();
+        let state = initial_state(&mut state_builder);
+        let mut host = TestHost::new(state, state_builder);
+
+        // Call the contract function.
+        let result: ContractResult<()> = contract_set_paused(&ctx, &mut host);
+
+        // Check that invoke failed.
+        claim_eq!(
+            result,
+            Err(ContractError::Unauthorized),
+            "Pause should fail because not the current admin tries to invoke it"
+        );
+    }
+
+    /// Test that one can NOT call non-admin state-mutative functions (stake,
+    /// unstake, transfer, updateOperator) when the contract is paused.
+    #[concordium_test]
+    fn test_no_execution_of_state_mutative_functions_when_paused() {
+        // Set up the context.
+        let mut ctx = TestReceiveContext::empty();
+        ctx.set_sender(ADMIN_ADDRESS);
+
+        // Set up the parameter to pause the contract.
+        let parameter_bytes = to_bytes(&true);
+        ctx.set_parameter(&parameter_bytes);
+
+        // Set up the state and host.
+        let mut state_builder = TestStateBuilder::new();
+        let state = initial_state(&mut state_builder);
+        let mut host = TestHost::new(state, state_builder);
+
+        // Call the contract function.
+        let result: ContractResult<()> = contract_set_paused(&ctx, &mut host);
+
+        // Check the result.
+        claim!(result.is_ok(), "Results in rejection");
+
+        // Check contract is paused.
+        claim_eq!(host.state().paused, true, "Smart contract should be paused");
+
+        let mut logger = TestLogger::init();
+
+        // Call the `transfer` function.
+        let result: ContractResult<()> = contract_transfer(&ctx, &mut host, &mut logger);
+
+        // Check that invoke failed.
+        claim_eq!(
+            result,
+            Err(ContractError::Custom(CustomContractError::ContractPaused)),
+            "Transfer should fail because contract is paused"
+        );
+
+        // Call the `updateOperator` function.
+        let result: ContractResult<()> = contract_update_operator(&ctx, &mut host, &mut logger);
+
+        // Check that invoke failed.
+        claim_eq!(
+            result,
+            Err(ContractError::Custom(CustomContractError::ContractPaused)),
+            "Update operator should fail because contract is paused"
+        );
+
+        // Call the `stake` function.
+        let result: ContractResult<()> =
+            contract_stake(&ctx, &mut host, &mut logger);
+
+        // Check that invoke failed.
+        claim_eq!(
+            result,
+            Err(ContractError::Custom(CustomContractError::ContractPaused)),
+            "stake should fail because contract is paused"
+        );
+
+        // Call the`unstake` function.
+        let result: ContractResult<()> = contract_unstake(&ctx, &mut host, &mut logger);
+
+        // Check that invoke failed.
+        claim_eq!(
+            result,
+            Err(ContractError::Custom(CustomContractError::ContractPaused)),
+            "unstake should fail because contract is paused"
+        );
+    }
 }
