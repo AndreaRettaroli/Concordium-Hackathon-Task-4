@@ -1,6 +1,6 @@
 import React from 'react'
 import Container from '../UI/Container/Container'
-import Form from '../UI/form/form'
+import Form from '../UI/form/Form'
 import style from './UnstakeContainer.module.css'
 
 const UnstakeContainer = () => {
