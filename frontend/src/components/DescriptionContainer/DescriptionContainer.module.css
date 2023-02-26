@@ -1,7 +1,0 @@
-.title {
-  @apply font-commodore text-5xl font-extrabold text-white;
-}
-
-.text {
-  @apply font-commodore text-3xl font-bold text-white;
-}
