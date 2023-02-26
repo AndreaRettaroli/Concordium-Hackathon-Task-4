@@ -1,0 +1,18 @@
+[package]
+name = "concordium-lsp"
+version = "0.1.0"
+description = "Liquid Staking Platform for Concordium blockchain"
+edition = "2021"
+
+[features]
+default = ["std", "crypto-primitives", "wee_alloc"]
+std = ["concordium-std/std", "concordium-cis2/std"]
+crypto-primitives = ["concordium-std/crypto-primitives"]
+wee_alloc = ["concordium-std/wee_alloc"]
+
+[dependencies]
+concordium-std = "6.0.0"
+concordium-cis2 = "3.0.0"
+
+[lib]
+crate-type=["cdylib", "rlib"]
