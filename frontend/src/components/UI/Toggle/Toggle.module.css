@@ -1,0 +1,19 @@
+.toggle {
+  @apply sm:container md:w-5/12  my-5 mx-auto  container w-10/12;
+  @apply bg-purple;
+  @apply border-2 border-light-purple border-solid;
+  @apply shadow-default;
+  @apply flex  content-center items-center justify-between;
+}
+
+.button {
+  @apply w-3/6;
+  @apply flex content-center items-center justify-center;
+  @apply font-commodore text-3xl font-bold text-white uppercase;
+  @apply border-2 border-light-purple border-solid;
+}
+
+button[disabled] {
+  @apply border-2 border-purple border-solid;
+  @apply bg-light-purple;
+}

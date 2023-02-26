@@ -7,6 +7,9 @@ const UnstakeContainer = () => {
   return (
     <Container>
       <h1 className={style.title}>Unstake</h1>
+      <p className={style.text}>
+        Unstake your wCCDs
+      </p>
       <Form />
     </Container>
   )

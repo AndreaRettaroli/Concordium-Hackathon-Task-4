@@ -48,5 +48,36 @@
   letter-spacing: 5px;
   text-shadow: -1px 0 0 #fdff2a, -2px 0 0 #df4a42, 1px 0 0 #91fcfe,
     2px 0 0 #4405fc;
+}
 
+.connected {
+  @apply border-2 border-light-purple border-solid;
+  box-shadow: 3px 3px 0 black;
+  color: inherit;
+  font-size: 15px;
+  text-transform: uppercase;
+  padding: 10px;
+  font-family: "Commodore", monospace;
+  color: white;
+  text-align: center;
+  font-size: 1.5rem;
+  line-height: 20px;
+  letter-spacing: 5px;
+  text-shadow: -1px 0 0 #fdff2a, -2px 0 0 #df4a42, 1px 0 0 #91fcfe,
+    2px 0 0 #4405fc;
+}
+
+.connected:hover {
+  box-shadow: 1px 1px 0 black;
+}
+
+.connected::before {
+  display: inline-block;
+  content: "";
+  margin-right: 0.75rem;
+  width: 1rem;
+  height: 1rem;
+  background: #07c50a;
+  border: 3px solid #d0eea7;
+  border-radius: 50%;
 }

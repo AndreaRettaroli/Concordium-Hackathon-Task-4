@@ -7,6 +7,9 @@ const StakeContainer = () => {
   return (
     <Container>
       <h1 className={style.title}>Stake</h1>
+      <div>
+        <p className={style.text}>Stake your CCDs</p>
+      </div>
       <Form />
     </Container>
   )
